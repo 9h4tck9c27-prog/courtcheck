@@ -105,7 +105,8 @@ export default async (req) => {
   const debug = params.get("debug") === "1";
   const wantTomorrow = params.get("day") === "tomorrow";
   const now = laNow();
-  let startH = Math.max(WINDOW_START, now.hour);
+  // Skip the hour already in progress: at 6:46 PM the first useful slot is 7:00 PM.
+  let startH = Math.max(WINDOW_START, now.hour + 1);
   let dateStr = now.mdY, dateLabel = `${now.weekday}, ${now.month} ${now.day}`, whichDay = "tonight";
   // Tomorrow if asked, or automatically once tonight's window has closed.
   if (wantTomorrow || now.hour >= WINDOW_END) {
