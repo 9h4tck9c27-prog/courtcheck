@@ -147,3 +147,5 @@ export default async (req) => {
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 };
+
+export const config = { path: "/api/courts" };
