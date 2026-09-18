@@ -54,6 +54,9 @@
     font-family: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
     min-height: 100dvh;
     padding: clamp(20px, 5vw, 56px);
+    /* Home-screen mode runs under the iPhone status bar: leave room for it. */
+    padding-top: calc(clamp(20px, 5vw, 56px) + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(clamp(20px, 5vw, 56px) + env(safe-area-inset-bottom, 0px));
     line-height: 1.35;
   }
 
@@ -67,7 +70,7 @@
     position: fixed; inset: 0; z-index: 10;
     background: var(--court);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6vh;
-    padding: 24px; text-align: center;
+    padding: calc(24px + env(safe-area-inset-top, 0px)) 24px 24px; text-align: center;
   }
   #splash.hide { animation: splash-out .45s ease-in forwards; }
   @keyframes splash-out { to { opacity: 0; transform: translateY(-6%); visibility: hidden; } }
@@ -224,7 +227,7 @@
 
   const siteHtml = s => `
     <section class="site">
-      <h2>${esc(s.name)}<small>${esc(s.miles)} mi</small></h2>
+      <h2>${esc(s.name)}${s.miles != null ? `<small>${esc(s.miles)} mi</small>` : ''}</h2>
       <a class="btn btn-book" href="${esc(s.url)}" target="_blank" rel="noopener">Book</a>
       ${s.error ? `<p class="err">Couldn't check this park. ${esc(s.error)}</p>`
         : s.slots.length
@@ -247,7 +250,7 @@
   function render(data) {
     const total = data.sites.reduce((n, s) => n + s.slots.length, 0);
     // Parks with an open court first, then closest to West Hollywood.
-    const sites = [...data.sites].sort((a, b) => (b.slots.length > 0) - (a.slots.length > 0) || a.miles - b.miles);
+    const sites = [...data.sites].sort((a, b) => (b.slots.length > 0) - (a.slots.length > 0) || (a.miles ?? 99) - (b.miles ?? 99));
     const showingTomorrow = data.which_day === 'tomorrow';
     const allDay = data.mode === 'all';
     const when = showingTomorrow ? (allDay ? 'tomorrow' : 'tomorrow evening') : (allDay ? 'today' : 'tonight');
