@@ -1,0 +1,13 @@
+{
+  "name": "Court Tonight",
+  "short_name": "Court Tonight",
+  "description": "Find an open public tennis court near West Hollywood tonight.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2456A4",
+  "theme_color": "#2456A4",
+  "icons": [
+    { "src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/brand/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
