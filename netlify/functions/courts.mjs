@@ -95,12 +95,14 @@ async function fetchSite(site, dateStr, startH, endH, debug) {
 }
 
 export default async (req) => {
-  const debug = new URL(req.url).searchParams.get("debug") === "1";
+  const params = new URL(req.url).searchParams;
+  const debug = params.get("debug") === "1";
+  const wantTomorrow = params.get("day") === "tomorrow";
   const now = laNow();
-  // After the window closes, look at tomorrow instead of an empty evening.
   let startH = Math.max(WINDOW_START, now.hour);
   let dateStr = now.mdY, dateLabel = `${now.weekday}, ${now.month} ${now.day}`, whichDay = "tonight";
-  if (now.hour >= WINDOW_END) {
+  // Tomorrow if asked, or automatically once tonight's window has closed.
+  if (wantTomorrow || now.hour >= WINDOW_END) {
     const t = new Date(Date.now() + 24 * 3600 * 1000);
     const [mm, dd, yyyy] = new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(t).split("/");
     dateStr = `${mm}/${dd}/${yyyy}`;
@@ -114,7 +116,7 @@ export default async (req) => {
 
   const body = {
     checked_at: `${((now.hour + 11) % 12) + 1}:${String(now.minute).padStart(2, "0")} ${now.hour >= 12 ? "PM" : "AM"}`,
-    date: dateLabel, which_day: whichDay,
+    date: dateLabel, which_day: whichDay, auto_tomorrow: !wantTomorrow && now.hour >= WINDOW_END,
     window: `${fmt(startH).replace(":00", "").toLowerCase()}–${fmt(WINDOW_END).replace(":00", "").toLowerCase()}`,
     sites,
   };
