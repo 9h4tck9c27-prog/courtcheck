@@ -48,6 +48,12 @@ function decode(s) {
 }
 
 // Split the results page into court blocks and read the time pills.
+function bookUrl(location, dateStr, startH) {
+  const q = new URLSearchParams({ location, module: "FR", date: dateStr, begintime: fmt(startH).toLowerCase(),
+    InterfaceParameter: "Iframe_Live_WebTrac", arwebsearch_buttonsearch: "yes" });
+  return `${WEBTRAC}?${q}`;
+}
+
 function parseSlots(html, startH, endH) {
   const slots = [];
   const blocks = html.split(/class="result-content/).slice(1);
@@ -86,10 +92,10 @@ async function fetchSite(site, dateStr, startH, endH, debug) {
     res = await fetch(url, { headers: { ...headers, Cookie: cookie.split(",").map(c => c.split(";")[0]).join("; ") }, redirect: "follow" });
     html = await res.text();
   }
-  const entry = { key: site.key, name: site.name, url: site.url, slots: [], error: null };
+  const entry = { key: site.key, name: site.name, url: bookUrl(site.location, dateStr, startH), slots: [], error: null };
   if (!res.ok) entry.error = `HTTP ${res.status}`;
   else if (!/result-content|did not return any matching/.test(html)) entry.error = "Unexpected page from the City site";
-  else entry.slots = parseSlots(html, startH, endH);
+  else entry.slots = parseSlots(html, startH, endH).map(x => ({ ...x, url: bookUrl(site.location, dateStr, x.sort) }));
   if (debug) entry.debug = { status: res.status, bytes: html.length, sample: html.slice(0, 300) };
   return entry;
 }
@@ -109,10 +115,9 @@ export default async (req) => {
     dateLabel = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }).format(t);
     startH = WINDOW_START; whichDay = "tomorrow";
   }
-  for (const s of SITES) s.url = "https://recreation.parks.lacity.gov/discover-activities?reserve=true&location=" + encodeURIComponent(s.location);
 
   const sites = await Promise.all(SITES.map(s => fetchSite(s, dateStr, startH, WINDOW_END, debug)
-    .catch(e => ({ key: s.key, name: s.name, url: s.url, slots: [], error: String(e.message || e) }))));
+    .catch(e => ({ key: s.key, name: s.name, url: bookUrl(s.location, dateStr, startH), slots: [], error: String(e.message || e) }))));
 
   const body = {
     checked_at: `${((now.hour + 11) % 12) + 1}:${String(now.minute).padStart(2, "0")} ${now.hour >= 12 ? "PM" : "AM"}`,
