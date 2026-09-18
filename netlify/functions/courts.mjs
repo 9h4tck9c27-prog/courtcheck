@@ -2,18 +2,21 @@
 // Runs on Netlify every time the page asks for /.netlify/functions/courts
 
 const WEBTRAC = "https://reg.recreation.parks.lacity.gov/web/wbwsc/webtrac.wsc/search.html";
-const WINDOW_START = 17; // 5pm
-const WINDOW_END = 21;   // 9pm
+const EVENING_START = 17; // 5pm
+const EVENING_END = 21;   // 9pm
+const DAY_START = 7;      // 7am  (all-day mode)
+const DAY_END = 22;       // 10pm (last bookable hour is 9pm)
 const TZ = "America/Los_Angeles";
 
 // Exact location names as they appear on the City's reservation form.
+// miles = approximate driving distance from West Hollywood; used for sorting and shown on the page.
 const SITES = [
-  { key: "poinsettia", name: "Poinsettia Park",    location: "Poinsettia Pay Tennis" },
-  { key: "cheviot",    name: "Cheviot Hills",      location: "Cheviot Hills Pay Tennis" },
-  { key: "westwood",   name: "Westwood",           location: "Westwood Pay Tennis" },
-  { key: "westchester",name: "Westchester",        location: "Westchester Pay Tennis" },
-  { key: "riverside",  name: "Griffith Riverside", location: "Riverside Pay Tennis" },
-  { key: "vermont",    name: "Vermont Canyon",     location: "Vermont Canyon Pay Tennis" },
+  { key: "poinsettia", name: "Poinsettia Park",    location: "Poinsettia Pay Tennis",    miles: 1.5 },
+  { key: "vermont",    name: "Vermont Canyon",     location: "Vermont Canyon Pay Tennis", miles: 5.5 },
+  { key: "riverside",  name: "Griffith Riverside", location: "Riverside Pay Tennis",      miles: 6 },
+  { key: "cheviot",    name: "Cheviot Hills",      location: "Cheviot Hills Pay Tennis",  miles: 7 },
+  { key: "westwood",   name: "Westwood",           location: "Westwood Pay Tennis",       miles: 7.5 },
+  { key: "westchester",name: "Westchester",        location: "Westchester Pay Tennis",    miles: 13 },
 ];
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
@@ -92,7 +95,7 @@ async function fetchSite(site, dateStr, startH, endH, debug) {
     res = await fetch(url, { headers: { ...headers, Cookie: cookie.split(",").map(c => c.split(";")[0]).join("; ") }, redirect: "follow" });
     html = await res.text();
   }
-  const entry = { key: site.key, name: site.name, url: bookUrl(site.location, dateStr, startH), slots: [], error: null };
+  const entry = { key: site.key, name: site.name, miles: site.miles, url: bookUrl(site.location, dateStr, startH), slots: [], error: null };
   if (!res.ok) entry.error = `HTTP ${res.status}`;
   else if (!/result-content|did not return any matching/.test(html)) entry.error = "Unexpected page from the City site";
   else entry.slots = parseSlots(html, startH, endH).map(x => ({ ...x, url: bookUrl(site.location, dateStr, x.sort) }));
@@ -104,31 +107,43 @@ export default async (req) => {
   const params = new URL(req.url).searchParams;
   const debug = params.get("debug") === "1";
   const wantTomorrow = params.get("day") === "tomorrow";
+  const modeParam = params.get("mode"); // "evening" | "all" | null (auto)
   const now = laNow();
-  // Skip the hour already in progress: at 6:46 PM the first useful slot is 7:00 PM.
-  let startH = Math.max(WINDOW_START, now.hour + 1);
-  let dateStr = now.mdY, dateLabel = `${now.weekday}, ${now.month} ${now.day}`, whichDay = "tonight";
-  // Tomorrow if asked, or automatically once tonight's window has closed.
-  if (wantTomorrow || now.hour >= WINDOW_END) {
-    const t = new Date(Date.now() + 24 * 3600 * 1000);
-    const [mm, dd, yyyy] = new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(t).split("/");
-    dateStr = `${mm}/${dd}/${yyyy}`;
-    dateLabel = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }).format(t);
-    startH = WINDOW_START; whichDay = "tomorrow";
-  }
 
-  const sites = await Promise.all(SITES.map(s => fetchSite(s, dateStr, startH, WINDOW_END, debug)
-    .catch(e => ({ key: s.key, name: s.name, url: bookUrl(s.location, dateStr, startH), slots: [], error: String(e.message || e) }))));
+  // Which calendar day are we looking at?
+  const target = new Date(Date.now() + (wantTomorrow ? 24 * 3600 * 1000 : 0));
+  const dayOf = d => ({
+    mdY: (() => { const [mm, dd, yyyy] = new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d).split("/"); return `${mm}/${dd}/${yyyy}`; })(),
+    label: new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }).format(d),
+    weekend: /^(Sat|Sun)/.test(new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short" }).format(d)),
+  });
+  let d = dayOf(target), whichDay = wantTomorrow ? "tomorrow" : "today";
+  // Weekends show the whole day; weekdays default to evenings.
+  const mode = modeParam === "all" || modeParam === "evening" ? modeParam : (d.weekend ? "all" : "evening");
+  const endH = mode === "all" ? DAY_END : EVENING_END;
+  const firstH = mode === "all" ? DAY_START : EVENING_START;
+  // Skip the hour already in progress: at 6:46 PM the first useful slot is 7:00 PM.
+  let startH = wantTomorrow ? firstH : Math.max(firstH, now.hour + 1);
+
+  // If today's window has already closed, roll to tomorrow automatically.
+  let autoTomorrow = false;
+  if (!wantTomorrow && startH >= endH) {
+    autoTomorrow = true; whichDay = "tomorrow";
+    d = dayOf(new Date(Date.now() + 24 * 3600 * 1000));
+    startH = firstH;
+  }
+  const dateStr = d.mdY;
+
+  const sites = await Promise.all(SITES.map(s => fetchSite(s, dateStr, startH, endH, debug)
+    .catch(e => ({ key: s.key, name: s.name, miles: s.miles, url: bookUrl(s.location, dateStr, startH), slots: [], error: String(e.message || e) }))));
 
   const body = {
     checked_at: `${((now.hour + 11) % 12) + 1}:${String(now.minute).padStart(2, "0")} ${now.hour >= 12 ? "PM" : "AM"}`,
-    date: dateLabel, which_day: whichDay, auto_tomorrow: !wantTomorrow && now.hour >= WINDOW_END,
-    window: `${fmt(startH).replace(":00", "").toLowerCase()}–${fmt(WINDOW_END).replace(":00", "").toLowerCase()}`,
+    date: d.label, which_day: whichDay, weekend: d.weekend, mode, auto_tomorrow: autoTomorrow,
+    window: `${fmt(startH).replace(":00", "").toLowerCase()}–${fmt(endH).replace(":00", "").toLowerCase()}`,
     sites,
   };
   return new Response(JSON.stringify(body), {
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 };
-
-export const config = { path: "/api/courts" };
