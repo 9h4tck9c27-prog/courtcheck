@@ -201,7 +201,7 @@
       ${s.error ? `<p class="err">Couldn't check this park. ${esc(s.error)}</p>`
         : s.slots.length
           ? `<ul class="slots">${s.slots.map(x =>
-              `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(x.time)}${x.court ? `<small>${esc(x.court)}</small>` : ''}</a></li>`).join('')}</ul>`
+              `<li><a href="${esc(x.url || s.url)}" target="_blank" rel="noopener">${esc(x.time)}${x.court ? `<small>${esc(x.court)}</small>` : ''}</a></li>`).join('')}</ul>`
           : `<p class="none">Nothing open.</p>`}
     </section>`;
 
